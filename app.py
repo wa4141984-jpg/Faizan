@@ -1,11 +1,36 @@
 """AI Study Assistant - Streamlit UI. Run with:  streamlit run app.py"""
+import os
+import sys
+
 import streamlit as st
 
-import ai_client
-import config
-import file_utils
-
 st.set_page_config(page_title="AI Study Assistant", page_icon="🎓", layout="centered")
+
+# Make sure Python can find our sibling files no matter where the app is launched from.
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+
+# Friendly check: all project files must be uploaded next to app.py.
+_missing = [f for f in ("ai_client.py", "config.py", "file_utils.py")
+            if not os.path.exists(os.path.join(APP_DIR, f))]
+if _missing:
+    st.error(
+        f"**Missing project files:** {', '.join(_missing)}. "
+        "Upload ALL files from the project (not just app.py) to the same folder / GitHub repo."
+    )
+    st.stop()
+
+try:
+    import ai_client
+    import config
+    import file_utils
+except ModuleNotFoundError as e:
+    st.error(
+        f"**Missing Python package: `{e.name}`.** Make sure `requirements.txt` is in your repo "
+        "root and contains all packages, then reboot the app."
+    )
+    st.stop()
 
 st.markdown(
     """
@@ -88,7 +113,11 @@ if prompt is not None:
                         api_key, mode, st.session_state.messages, st.session_state.files
                     )
                     first = next(stream, "")  # spinner shows until the first words arrive
-                reply = st.write_stream(_ for _ in [first, *stream])
+                def _chain():
+                    yield first
+                    yield from stream
+
+                reply = st.write_stream(_chain())
                 st.session_state.messages.append({"role": "assistant", "content": reply})
             except ai_client.AIError as e:
                 st.error(f"⚠️ {e}")
